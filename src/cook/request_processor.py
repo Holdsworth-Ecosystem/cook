@@ -9,8 +9,10 @@ import structlog
 from sqlalchemy import text
 
 from cook.db import get_session
+from sturmey.telemetry import extract_trace_context, get_tracer
 
 log = structlog.get_logger(__name__)
+_tracer = get_tracer(__name__)
 
 _FOOTMAN = "cook"
 
@@ -32,7 +34,17 @@ async def process_pending_requests() -> None:
         ).fetchall()
 
     for row in rows:
-        await _handle_request(row.id, row.request_type, row.payload or {})
+        payload = row.payload or {}
+        parent_ctx = extract_trace_context(payload)
+        with _tracer.start_as_current_span(
+            "cook.process_request",
+            context=parent_ctx,
+            attributes={
+                "footman.request_id": str(row.id),
+                "footman.request_type": row.request_type,
+            },
+        ):
+            await _handle_request(row.id, row.request_type, payload)
 
 
 async def _handle_request(request_id, request_type: str, payload: dict) -> None:
