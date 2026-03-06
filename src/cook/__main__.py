@@ -20,15 +20,10 @@ log = structlog.get_logger(__name__)
 
 
 def _configure_logging(level: str) -> None:
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(message)s",
-    )
-    structlog.configure(
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, level.upper(), logging.INFO)
-        ),
-    )
+    from sturmey.telemetry import configure_structlog, init_telemetry
+
+    configure_structlog(level)
+    init_telemetry("cook")
 
 
 async def main() -> None:
