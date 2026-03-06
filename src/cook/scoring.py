@@ -6,6 +6,8 @@ ingredients. Returns a score and any warnings (blocked ingredients, etc.).
 
 from __future__ import annotations
 
+import re
+
 # Ingredient group mappings — if a diner has a profile entry for a group key,
 # all members of that group are treated as matching.
 INGREDIENT_GROUPS: dict[str, set[str]] = {
@@ -24,6 +26,15 @@ _INGREDIENT_TO_GROUPS: dict[str, set[str]] = {}
 for _group, _members in INGREDIENT_GROUPS.items():
     for _member in _members:
         _INGREDIENT_TO_GROUPS.setdefault(_member, set()).add(_group)
+
+# Sibling lookup: if profile item is a group member (e.g. "milk"),
+# expand to all siblings in the same group(s) (e.g. cream, butter, yoghurt...)
+_SIBLING_ITEMS: dict[str, set[str]] = {}
+for _group, _members in INGREDIENT_GROUPS.items():
+    for _member in _members:
+        _SIBLING_ITEMS.setdefault(_member, set()).update(_members)
+
+_NUMERIC_RE_PATTERN = r"^\d+$"
 
 SEVERITY_SCORES = {
     "cannot": -1000,  # blocks the recipe entirely
@@ -50,11 +61,21 @@ def _ingredient_matches_profile(ingredient_name: str, profile_item: str, profile
     if item in ing or ing in item:
         return True
 
-    # Group expansion: if profile item is a group key, check if ingredient is in that group
+    # Group expansion: if profile item is a group key (e.g. "dairy"),
+    # check if ingredient is in that group
     group_members = INGREDIENT_GROUPS.get(item)
     if group_members:
         for member in group_members:
             if member in ing:
+                return True
+
+    # Sibling expansion: if profile item is a group member (e.g. "milk"),
+    # check if ingredient matches any sibling in the same group(s)
+    # (e.g. "milk" -> dairy siblings -> cream, butter, yoghurt, cheese...)
+    siblings = _SIBLING_ITEMS.get(item)
+    if siblings:
+        for sibling in siblings:
+            if sibling in ing or ing in sibling:
                 return True
 
     # Reverse: if ingredient is a group member, check if profile item matches the group
@@ -83,6 +104,14 @@ def _dish_matches_profile(recipe_name: str, profile_item: str, profile_type: str
     return _normalise(profile_item) in _normalise(recipe_name)
 
 
+def _has_unresolved_ingredients(ingredient_names: list[str]) -> bool:
+    """Check if a recipe has ingredients that are just product IDs (unresolved)."""
+    if not ingredient_names:
+        return False
+    unresolved = sum(1 for n in ingredient_names if re.match(_NUMERIC_RE_PATTERN, n.strip()))
+    return unresolved > len(ingredient_names) / 2
+
+
 def score_recipe(
     recipe_name: str,
     recipe_tags: list[str],
@@ -107,6 +136,18 @@ def score_recipe(
     blocked = False
     warnings: list[str] = []
     bonuses: list[str] = []
+
+    # If most ingredients are unresolved product IDs, we can't verify safety.
+    # Penalise for any diner with CANNOT profiles — err on the side of caution.
+    unresolved = _has_unresolved_ingredients(ingredient_names)
+    has_cannot = any(p["severity"] == "cannot" for p in diner_profiles)
+    if unresolved and has_cannot:
+        score -= 50
+        cannot_members = {p["member_name"] for p in diner_profiles if p["severity"] == "cannot"}
+        warnings.append(
+            f"Ingredients not verified (product IDs only) — "
+            f"cannot confirm safe for {', '.join(sorted(cannot_members))}"
+        )
 
     for profile in diner_profiles:
         member = profile["member_name"]

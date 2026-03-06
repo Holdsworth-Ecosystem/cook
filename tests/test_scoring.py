@@ -13,6 +13,7 @@ from cook.scoring import (
     INGREDIENT_GROUPS,
     _cuisine_matches_profile,
     _dish_matches_profile,
+    _has_unresolved_ingredients,
     _ingredient_matches_profile,
     score_recipe,
 )
@@ -64,6 +65,27 @@ class TestIngredientMatching:
 
     def test_ignores_dish_type(self):
         assert not _ingredient_matches_profile("pasta", "pasta", "dish")
+
+    def test_sibling_expansion_milk_matches_yoghurt(self):
+        """Profile says 'milk' — should match 'yoghurt' (both dairy siblings)."""
+        assert _ingredient_matches_profile("greek yoghurt", "milk", "ingredient")
+
+    def test_sibling_expansion_milk_matches_cream(self):
+        assert _ingredient_matches_profile("double cream", "milk", "ingredient")
+
+    def test_sibling_expansion_milk_matches_butter(self):
+        assert _ingredient_matches_profile("butter", "milk", "ingredient")
+
+    def test_sibling_expansion_milk_matches_cheese(self):
+        assert _ingredient_matches_profile("cheddar cheese", "milk", "ingredient")
+
+    def test_sibling_expansion_flour_matches_pasta(self):
+        """Profile says 'flour' — should match 'pasta' (both wheat siblings)."""
+        assert _ingredient_matches_profile("pasta", "flour", "ingredient")
+
+    def test_sibling_no_cross_group(self):
+        """Milk and flour are in different groups — no sibling match."""
+        assert not _ingredient_matches_profile("flour", "milk", "ingredient")
 
     def test_case_insensitive(self):
         assert _ingredient_matches_profile("Butter", "butter", "ingredient")
@@ -277,6 +299,102 @@ class TestScoreRecipe:
         )
         assert result["blocked"] is False
         assert result["score"] == 100
+
+    def test_sibling_blocks_milk_on_yoghurt(self):
+        """CANNOT milk should block a recipe containing yoghurt."""
+        result = score_recipe(
+            recipe_name="Yoghurt Parfait",
+            recipe_tags=[],
+            ingredient_names=["greek yoghurt", "strawberries", "granola"],
+            diner_profiles=[
+                {
+                    "member_name": "David",
+                    "item": "milk",
+                    "item_type": "ingredient",
+                    "severity": "cannot",
+                    "reason": "intolerance",
+                },
+            ],
+        )
+        assert result["blocked"] is True
+        assert any("David" in w and "milk" in w for w in result["warnings"])
+
+    def test_unresolved_ingredients_penalised_with_cannot(self):
+        """Numeric product IDs + CANNOT profiles = penalty + warning."""
+        result = score_recipe(
+            recipe_name="Yorkshire Puddings",
+            recipe_tags=["beef"],
+            ingredient_names=["562544011", "509771011", "518717011"],
+            diner_profiles=[
+                {
+                    "member_name": "David",
+                    "item": "wheat",
+                    "item_type": "ingredient",
+                    "severity": "cannot",
+                    "reason": "intolerance",
+                },
+            ],
+        )
+        assert result["score"] == 50  # 100 - 50 penalty
+        assert any("not verified" in w for w in result["warnings"])
+        assert any("David" in w for w in result["warnings"])
+
+    def test_unresolved_ingredients_no_penalty_without_cannot(self):
+        """Numeric product IDs but no CANNOT profiles = no penalty."""
+        result = score_recipe(
+            recipe_name="Something",
+            recipe_tags=[],
+            ingredient_names=["562544011", "509771011"],
+            diner_profiles=[
+                {
+                    "member_name": "Lisa",
+                    "item": "thai",
+                    "item_type": "cuisine",
+                    "severity": "likes",
+                    "reason": None,
+                },
+            ],
+        )
+        assert result["score"] == 100  # no penalty
+        assert not any("not verified" in w for w in result["warnings"])
+
+    def test_mixed_resolved_unresolved_under_threshold(self):
+        """Mostly real ingredient names with a few IDs = no penalty."""
+        result = score_recipe(
+            recipe_name="Chicken Dish",
+            recipe_tags=[],
+            ingredient_names=["chicken", "onion", "garlic", "562544011"],
+            diner_profiles=[
+                {
+                    "member_name": "David",
+                    "item": "wheat",
+                    "item_type": "ingredient",
+                    "severity": "cannot",
+                    "reason": "intolerance",
+                },
+            ],
+        )
+        assert result["score"] == 100
+        assert not any("not verified" in w for w in result["warnings"])
+
+
+class TestUnresolvedIngredients:
+    """Test _has_unresolved_ingredients helper."""
+
+    def test_all_numeric(self):
+        assert _has_unresolved_ingredients(["123456", "789012", "345678"])
+
+    def test_all_real(self):
+        assert not _has_unresolved_ingredients(["chicken", "onion", "garlic"])
+
+    def test_mostly_numeric(self):
+        assert _has_unresolved_ingredients(["123456", "789012", "chicken"])
+
+    def test_mostly_real(self):
+        assert not _has_unresolved_ingredients(["chicken", "onion", "123456", "garlic"])
+
+    def test_empty(self):
+        assert not _has_unresolved_ingredients([])
 
 
 class TestIngredientGroups:
