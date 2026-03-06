@@ -82,7 +82,7 @@ async def handle_rate_recipe(payload: dict) -> dict:
     member_name = payload.get("member_name")
     rating = payload.get("rating")
 
-    if not all([recipe_name, member_name, rating]):
+    if not recipe_name or not member_name or rating is None:
         raise ValueError("recipe_name, member_name, and rating are required")
 
     try:
