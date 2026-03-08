@@ -65,6 +65,40 @@ async def _load_recipe_ingredients(recipe_id: str) -> list[str]:
     return [r.name for r in rows]
 
 
+async def _load_recipe_overrides(
+    recipe_ids: list[str], member_ids: list[str]
+) -> dict[str, list[dict]]:
+    """Load manual overrides keyed by recipe_id."""
+    if not recipe_ids or not member_ids:
+        return {}
+
+    async with get_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    text("""
+                    SELECT CAST(ro.recipe_id AS text) AS recipe_id,
+                           hm.name AS member_name,
+                           ro.suitability, ro.reason, ro.substitution
+                    FROM cook.recipe_overrides ro
+                    JOIN sturmey.household_members hm ON ro.member_id = hm.id
+                    WHERE CAST(ro.recipe_id AS text) = ANY(:recipe_ids)
+                      AND ro.member_id = ANY(CAST(:member_ids AS uuid[]))
+                """),
+                    {"recipe_ids": recipe_ids, "member_ids": member_ids},
+                )
+            )
+            .mappings()
+            .fetchall()
+        )
+
+    result: dict[str, list[dict]] = {}
+    for r in rows:
+        rid = str(r["recipe_id"])
+        result.setdefault(rid, []).append(dict(r))
+    return result
+
+
 async def _get_average_ratings(recipe_ids: list[str], member_ids: list[str]) -> dict[str, float]:
     """Get average ratings per recipe for these diners."""
     if not recipe_ids or not member_ids:
@@ -141,6 +175,7 @@ async def handle_suggest_recipes(payload: dict) -> dict:
 
     recipe_ids = [str(r.id) for r in rows]
     ratings = await _get_average_ratings(recipe_ids, member_ids)
+    all_overrides = await _load_recipe_overrides(recipe_ids, member_ids)
 
     # Score each recipe
     scored = []
@@ -153,6 +188,7 @@ async def handle_suggest_recipes(payload: dict) -> dict:
             ingredient_names=ingredients,
             diner_profiles=profiles,
             average_rating=ratings.get(rid),
+            overrides=all_overrides.get(rid),
         )
         scored.append(
             {
@@ -237,11 +273,24 @@ async def handle_check_dietary(payload: dict) -> dict:
         )
 
     profiles = [dict(r) for r in profile_rows]
+
+    # Load all member IDs for override lookup
+    all_member_ids = list({str(r["member_name"]) for r in profile_rows})
+    async with get_session() as session:
+        member_rows = (
+            await session.execute(
+                text("SELECT CAST(id AS text) AS id FROM sturmey.household_members")
+            )
+        ).fetchall()
+    all_member_ids = [r.id for r in member_rows]
+    overrides = await _load_recipe_overrides([rid], all_member_ids)
+
     result = score_recipe(
         recipe_name=row.name,
         recipe_tags=list(row.tags) if row.tags else [],
         ingredient_names=ingredients,
         diner_profiles=profiles,
+        overrides=overrides.get(rid),
     )
 
     return {

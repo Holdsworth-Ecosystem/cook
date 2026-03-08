@@ -11,9 +11,75 @@ import re
 # Ingredient group mappings — if a diner has a profile entry for a group key,
 # all members of that group are treated as matching.
 INGREDIENT_GROUPS: dict[str, set[str]] = {
-    "dairy": {"milk", "cream", "butter", "cheese", "yoghurt", "yogurt", "creme fraiche"},
-    "wheat": {"flour", "bread", "pasta", "noodles", "couscous", "breadcrumbs", "pastry"},
-    "gluten": {"flour", "bread", "pasta", "noodles", "couscous", "breadcrumbs", "pastry"},
+    "dairy": {
+        "milk",
+        "cream",
+        "butter",
+        "cheese",
+        "yoghurt",
+        "yogurt",
+        "creme fraiche",
+        "tzatziki",
+        "mozzarella",
+        "parmesan",
+        "ricotta",
+        "mascarpone",
+        "paneer",
+    },
+    "wheat": {
+        "flour",
+        "bread",
+        "pasta",
+        "noodles",
+        "couscous",
+        "breadcrumbs",
+        "pastry",
+        "roti",
+        "rotis",
+        "naan",
+        "pitta",
+        "pita",
+        "tortilla",
+        "wrap",
+        "wraps",
+        "toast",
+        "crumpet",
+        "crumpets",
+        "ciabatta",
+        "focaccia",
+        "brioche",
+        "croissant",
+        "baguette",
+        "sourdough",
+        "flatbread",
+    },
+    "gluten": {
+        "flour",
+        "bread",
+        "pasta",
+        "noodles",
+        "couscous",
+        "breadcrumbs",
+        "pastry",
+        "roti",
+        "rotis",
+        "naan",
+        "pitta",
+        "pita",
+        "tortilla",
+        "wrap",
+        "wraps",
+        "toast",
+        "crumpet",
+        "crumpets",
+        "ciabatta",
+        "focaccia",
+        "brioche",
+        "croissant",
+        "baguette",
+        "sourdough",
+        "flatbread",
+    },
     "shellfish": {"prawn", "prawns", "shrimp", "crab", "lobster", "mussel", "mussels"},
     "nuts": {"almond", "walnut", "cashew", "peanut", "pistachio", "hazelnut", "pecan"},
     "fish": {"salmon", "cod", "tuna", "mackerel", "haddock", "sardine", "anchovy", "trout"},
@@ -118,6 +184,7 @@ def score_recipe(
     ingredient_names: list[str],
     diner_profiles: list[dict],
     average_rating: float | None = None,
+    overrides: list[dict] | None = None,
 ) -> dict:
     """Score a recipe for a set of diners.
 
@@ -128,6 +195,8 @@ def score_recipe(
         diner_profiles: List of dicts, each with keys:
             member_name, item, item_type, severity, reason
         average_rating: Mean rating from previous meals (1-5), or None.
+        overrides: Manual per-member overrides for this recipe. Each dict has:
+            member_name, suitability (cannot/dislikes/neutral/likes/loves), reason
 
     Returns:
         dict with keys: score, blocked, warnings, bonuses
@@ -136,6 +205,25 @@ def score_recipe(
     blocked = False
     warnings: list[str] = []
     bonuses: list[str] = []
+
+    # Manual overrides trump algorithmic scoring — the LLM only thinks once,
+    # the database remembers forever.
+    if overrides:
+        for ov in overrides:
+            member = ov["member_name"]
+            suitability = ov["suitability"]
+            reason = ov.get("reason", "")
+            sev_score = SEVERITY_SCORES.get(suitability, 0)
+            score += sev_score
+            if suitability == "cannot":
+                blocked = True
+                reason_text = f" — {reason}" if reason else ""
+                warnings.append(f"{member} cannot eat this recipe (manual override{reason_text})")
+            elif suitability == "dislikes":
+                reason_text = f" — {reason}" if reason else ""
+                warnings.append(f"{member} dislikes this recipe (manual override{reason_text})")
+            elif suitability in ("likes", "loves"):
+                bonuses.append(f"{member} {suitability} this recipe")
 
     # If most ingredients are unresolved product IDs, we can't verify safety.
     # Penalise for any diner with CANNOT profiles — err on the side of caution.

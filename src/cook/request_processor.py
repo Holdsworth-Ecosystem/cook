@@ -93,7 +93,11 @@ async def _handle_request(request_id, request_type: str, payload: dict) -> None:
 
 
 async def _dispatch(request_type: str, payload: dict) -> dict:
-    from cook.handlers.dietary import handle_get_dietary_profile, handle_update_dietary_profile
+    from cook.handlers.dietary import (
+        handle_get_dietary_profile,
+        handle_set_recipe_override,
+        handle_update_dietary_profile,
+    )
     from cook.handlers.meals import handle_rate_recipe, handle_record_meal
     from cook.handlers.order import handle_order_recipe_ingredients
     from cook.handlers.suggest import handle_check_dietary, handle_suggest_recipes
@@ -106,6 +110,7 @@ async def _dispatch(request_type: str, payload: dict) -> dict:
         "record_meal": handle_record_meal,
         "rate_recipe": handle_rate_recipe,
         "order_recipe_ingredients": handle_order_recipe_ingredients,
+        "set_recipe_override": handle_set_recipe_override,
     }
 
     handler = handlers.get(request_type)

@@ -1,4 +1,4 @@
-"""Dietary profile handlers — get and update member dietary profiles."""
+"""Dietary profile and recipe override handlers."""
 
 from __future__ import annotations
 
@@ -113,4 +113,89 @@ async def handle_update_dietary_profile(payload: dict) -> dict:
     return {
         "success": True,
         "message": f"Updated dietary profile for {member_name}: {severity.upper()} {item} ({item_type}).",
+    }
+
+
+async def handle_set_recipe_override(payload: dict) -> dict:
+    """Set a manual suitability override for a member + recipe.
+
+    The LLM thinks once ("koftas have roti, that's wheat"), records it here,
+    and Cook remembers forever. Overrides trump ingredient-matching.
+    """
+    member_name = payload.get("member_name")
+    recipe_name = payload.get("recipe_name")
+    suitability = payload.get("suitability")
+
+    if not all([member_name, recipe_name, suitability]):
+        raise ValueError("member_name, recipe_name, and suitability are required")
+
+    suitability = suitability.lower()
+    if suitability not in ("cannot", "dislikes", "neutral", "likes", "loves"):
+        raise ValueError(
+            f"Invalid suitability: {suitability}. Must be cannot/dislikes/neutral/likes/loves"
+        )
+
+    reason = payload.get("reason")
+    substitution = payload.get("substitution")
+    source = payload.get("source", "conversation")
+
+    async with get_session() as session:
+        # Look up member
+        member_row = (
+            await session.execute(
+                text("SELECT id FROM sturmey.household_members WHERE LOWER(name) = LOWER(:name)"),
+                {"name": member_name},
+            )
+        ).fetchone()
+
+        if not member_row:
+            return {"success": False, "message": f"No household member found: '{member_name}'."}
+
+        # Look up recipe
+        recipe_row = (
+            await session.execute(
+                text(
+                    "SELECT id, name FROM holdsworth.recipes "
+                    "WHERE LOWER(name) = LOWER(:name) LIMIT 1"
+                ),
+                {"name": recipe_name},
+            )
+        ).fetchone()
+
+        if not recipe_row:
+            return {"success": False, "message": f"No recipe found: '{recipe_name}'."}
+
+        member_id = str(member_row.id)
+        recipe_id = str(recipe_row.id)
+
+        await session.execute(
+            text("""
+                INSERT INTO cook.recipe_overrides
+                    (member_id, recipe_id, suitability, reason, substitution, source)
+                VALUES
+                    (CAST(:member_id AS uuid), CAST(:recipe_id AS uuid),
+                     :suitability, :reason, :substitution, :source)
+                ON CONFLICT (member_id, recipe_id)
+                DO UPDATE SET suitability = :suitability, reason = :reason,
+                             substitution = :substitution, source = :source,
+                             updated_at = NOW()
+            """),
+            {
+                "member_id": member_id,
+                "recipe_id": recipe_id,
+                "suitability": suitability,
+                "reason": reason,
+                "substitution": substitution,
+                "source": source,
+            },
+        )
+        await session.commit()
+
+    sub_msg = f" (substitution: {substitution})" if substitution else ""
+    return {
+        "success": True,
+        "message": (
+            f"Recorded: {member_name} — {suitability.upper()} {recipe_row.name}{sub_msg}. "
+            f"Cook will remember this for future suggestions."
+        ),
     }
