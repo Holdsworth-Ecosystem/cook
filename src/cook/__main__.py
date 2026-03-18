@@ -1,13 +1,14 @@
 """Cook service entry point.
 
 One scheduled job:
-- request_processor: every 30 seconds — handles food intelligence queries
+- request_processor: every 30 seconds  handles food intelligence queries
 """
 
 import asyncio
 import logging
 import signal
 import sys
+from datetime import datetime
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -43,7 +44,7 @@ async def main() -> None:
         name="Cook request processor",
         replace_existing=True,
         max_instances=1,
-        next_run_time=__import__("datetime").datetime.now(),
+        next_run_time=datetime.now(),
     )
 
     stop_event = asyncio.Event()
