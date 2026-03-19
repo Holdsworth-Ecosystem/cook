@@ -10,5 +10,5 @@ git pull
 /home/holdsworth/.local/bin/uv sync
 /home/holdsworth/.local/bin/uv run alembic upgrade head
 sudo -n /usr/bin/systemctl restart cook
-sudo -n /usr/bin/systemctl is-active --quiet cook || { echo "✗ cook failed to start"; exit 1; }
+systemctl is-active --quiet cook || { echo "✗ cook failed to start"; exit 1; }
 echo "✓ cook deployed (sturmey upgraded)"
