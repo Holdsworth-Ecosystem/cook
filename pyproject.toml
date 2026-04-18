@@ -27,6 +27,9 @@ dev = [
     "hypothesis>=6.0",
 ]
 
+[tool.uv.sources]
+sturmey = { path = "../sturmey", editable = true }
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/cook"]
 

@@ -173,7 +173,7 @@ requires-dist = [
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.14" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "structlog", specifier = ">=24.0" },
-    { name = "sturmey", git = "https://github.com/Holdsworth-Ecosystem/sturmey.git" },
+    { name = "sturmey", editable = "../sturmey" },
 ]
 provides-extras = ["dev"]
 
@@ -1156,7 +1156,7 @@ wheels = [
 [[package]]
 name = "sturmey"
 version = "0.1.0"
-source = { git = "https://github.com/Holdsworth-Ecosystem/sturmey.git#184a48b376e27f876a474cb1369231c07f987e16" }
+source = { editable = "../sturmey" }
 dependencies = [
     { name = "alembic" },
     { name = "anthropic" },
@@ -1178,6 +1178,40 @@ dependencies = [
     { name = "structlog" },
     { name = "tracery" },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", marker = "extra == 'dev'" },
+    { name = "alembic" },
+    { name = "anthropic" },
+    { name = "anyio", extras = ["trio"], marker = "extra == 'dev'" },
+    { name = "apscheduler", specifier = ">=3.10" },
+    { name = "asyncpg" },
+    { name = "faster-whisper", marker = "extra == 'voice'" },
+    { name = "httpx" },
+    { name = "httpx", marker = "extra == 'dev'" },
+    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.0" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "opentelemetry-instrumentation-httpx" },
+    { name = "opentelemetry-instrumentation-sqlalchemy" },
+    { name = "opentelemetry-sdk" },
+    { name = "paho-mqtt", specifier = ">=2.0" },
+    { name = "pgvector" },
+    { name = "pydantic-settings", specifier = ">=2.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
+    { name = "pytest-mock", marker = "extra == 'dev'" },
+    { name = "python-telegram-bot", specifier = ">=20.0" },
+    { name = "respx", marker = "extra == 'dev'" },
+    { name = "scikit-learn", specifier = ">=1.4" },
+    { name = "speechbrain", marker = "extra == 'voice'" },
+    { name = "sqlalchemy", specifier = ">=2.0" },
+    { name = "structlog" },
+    { name = "tracery" },
+]
+provides-extras = ["voice", "dev"]
 
 [[package]]
 name = "threadpoolctl"
