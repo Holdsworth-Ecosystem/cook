@@ -1,6 +1,7 @@
 """Alembic migration environment for Cook."""
 
 import asyncio
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -19,7 +20,11 @@ SCHEMA = "cook"
 
 
 def get_url() -> str:
-    return get_settings().database_url
+    # Alembic needs DDL which the per-service role lacks under the
+    # 2026-04-18 split. Use ALEMBIC_DATABASE_URL (peer-auth as the
+    # `holdsworth` owner role) when set; fall back to the service's
+    # normal DATABASE_URL for local dev.
+    return os.environ.get("ALEMBIC_DATABASE_URL") or get_settings().database_url
 
 
 def run_migrations_offline() -> None:
@@ -49,9 +54,8 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    settings = get_settings()
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.database_url
+    configuration["sqlalchemy.url"] = get_url()
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",
