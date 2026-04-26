@@ -1,0 +1,15 @@
+[Unit]
+Description=Cook — food intelligence for the Holdsworth household
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=holdsworth
+WorkingDirectory=/home/holdsworth/cook
+EnvironmentFile=/home/holdsworth/cook/.env
+ExecStart=/home/holdsworth/cook/.venv/bin/python -m cook
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
